@@ -8,14 +8,7 @@ import cv2
 import seaborn as sns 
 
 # NEW BACKEND IMPORTS
-from project_backend import (
-    EmotionCNN, 
-    generate_session,
-    DataHandler,
-    EMOTIONS, 
-    INSTRUMENTS,
-    RAGAS
-)
+import project_backend
 
 # Set page config (MUST BE FIRST STREAMLIT COMMAND)
 st.set_page_config(
@@ -27,13 +20,14 @@ st.set_page_config(
 # Initialize Components
 # Removed cache to ensure strict model reloading
 def get_components():
-    cnn = EmotionCNN()
+    cnn = project_backend.EmotionCNN()
     # Path to user CSV
-    data_handler = DataHandler("final2.O_merged_instrument_dataset(2054 audios).csv")
+    data_handler = project_backend.DataHandler("final2.O_merged_instrument_dataset(2054 audios).csv")
     data_handler.load_data()
     return cnn, data_handler
 
 cnn_model, data_handler = get_components()
+# ... (intermediate styles unchanged)
 st.markdown("""
 <style>
     .main-header { font-size: 2.5rem; color: #6C5CE7; text-align: center; font-weight: bold; }
@@ -81,9 +75,9 @@ with st.sidebar:
         selected_emotion = detected_emotion
     else:
         # Manual Mode
-        selected_emotion = st.selectbox("Select Emotion", EMOTIONS)
+        selected_emotion = st.selectbox("Select Emotion", project_backend.EMOTIONS)
         
-    selected_instrument = st.selectbox("Select Instrument", INSTRUMENTS)
+    selected_instrument = st.selectbox("Select Instrument", project_backend.INSTRUMENTS)
     
     duration = st.slider("Duration (seconds)", 5, 30, 10)
 
@@ -96,22 +90,28 @@ with col1:
     if st.button("🚀 Generate with AI", type="primary"):
         with st.spinner(f"{agent_type} Agent generating {selected_instrument} melody..."):
             
-            # CALL NEW BACKEND
-            audio_data, rate, policy = generate_session(
-                selected_emotion, 
-                selected_instrument, 
-                data_handler, 
-                duration,
-                agent_type=agent_type
-            )
-            
-            st.session_state['audio'] = audio_data
-            st.session_state['rate'] = rate
-            st.session_state['policy'] = policy # To visualize agent brain
-            st.session_state['meta'] = f"{selected_emotion} - {selected_instrument} ({agent_type})"
-            st.session_state['agent_type'] = agent_type
-            
-            st.success("Synthesis Complete!")
+            try:
+                # CALL NEW BACKEND
+                audio_data, rate, policy = project_backend.generate_session(
+                    selected_emotion, 
+                    selected_instrument, 
+                    data_handler, 
+                    duration,
+                    agent_type=agent_type
+                )
+                
+                st.session_state['audio'] = audio_data
+                st.session_state['rate'] = rate
+                st.session_state['policy'] = policy # To visualize agent brain
+                st.session_state['meta'] = f"{selected_emotion} - {selected_instrument} ({agent_type})"
+                st.session_state['agent_type'] = agent_type
+                
+                st.success("Synthesis Complete!")
+            except Exception as e:
+                st.error(f"Error in backend: {type(e).__name__}: {str(e)}")
+                # Log traceback for user to see
+                import traceback
+                st.code(traceback.format_exc())
 
 if 'audio' in st.session_state:
     audio = st.session_state['audio']
