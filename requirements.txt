@@ -3,7 +3,8 @@ pandas
 matplotlib
 seaborn
 opencv-python-headless
-streamlit
+streamlit>=1.32.0
+protobuf<5.0.0
 scipy
 tensorflow
 pillow
