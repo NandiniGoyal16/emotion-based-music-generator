@@ -1,0 +1,10 @@
+numpy
+pandas
+matplotlib
+seaborn
+opencv-python-headless
+streamlit
+scipy
+tensorflow
+pillow
+ipykernel
