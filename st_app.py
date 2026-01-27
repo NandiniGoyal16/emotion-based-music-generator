@@ -19,7 +19,7 @@ from project_backend import (
 
 # Set page config (MUST BE FIRST STREAMLIT COMMAND)
 st.set_page_config(
-    page_title="Advanced Emotion Music Generator (CNN + TRPO)",
+    page_title="Advanced Emotion Music Generator (CNN + RL)",
     page_icon="🧠",
     layout="wide"
 )
@@ -43,12 +43,15 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="main-header">🧠 Cortex Music Generator</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">Powered by Keras CNN & TRPO Reinforcement Learning</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Powered by Keras CNN & Reinforcement Learning (TRPO/SAC)</div>', unsafe_allow_html=True)
 
 # Sidebar
 with st.sidebar:
     st.header("⚙️ Settings")
     input_mode = st.radio("Input Mode", ["Upload Image", "Manual Selection"])
+    
+    st.divider()
+    agent_type = st.radio("Agent Type (RL Algorithm)", ["TRPO", "SAC"], index=0)
     
     detected_emotion = None
     
@@ -89,33 +92,32 @@ output_container = st.container()
 col1, col2 = st.columns([1, 2])
 
 with col1:
-    st.info("Click to run the TRPO Agent.")
+    st.info(f"Click to run the {agent_type} Agent.")
     if st.button("🚀 Generate with AI", type="primary"):
-        with st.spinner(f"TRPO Agent generating {selected_instrument} melody..."):
+        with st.spinner(f"{agent_type} Agent generating {selected_instrument} melody..."):
             
             # CALL NEW BACKEND
             audio_data, rate, policy = generate_session(
                 selected_emotion, 
                 selected_instrument, 
                 data_handler, 
-                duration
+                duration,
+                agent_type=agent_type
             )
             
             st.session_state['audio'] = audio_data
             st.session_state['rate'] = rate
             st.session_state['policy'] = policy # To visualize agent brain
-            st.session_state['meta'] = f"{selected_emotion} - {selected_instrument}"
+            st.session_state['meta'] = f"{selected_emotion} - {selected_instrument} ({agent_type})"
+            st.session_state['agent_type'] = agent_type
             
             st.success("Synthesis Complete!")
 
 if 'audio' in st.session_state:
     audio = st.session_state['audio']
     rate = st.session_state['rate']
+    current_agent = st.session_state.get('agent_type', 'Agent')
     
-    with output_container: # Warning: Variable output_container might not be defined in new scope, verify
-        # Actually col2 is better
-        pass
-
     with col2:
         st.subheader(f"🎶 Result: {st.session_state['meta']}")
         st.audio(audio, sample_rate=rate)
@@ -125,7 +127,7 @@ if 'audio' in st.session_state:
         scaled = np.int16(audio * 32767)
         wavfile.write("temp_out.wav", rate, scaled)
         with open("temp_out.wav", "rb") as f:
-            st.download_button("⬇️ Download WAV", f, file_name="generated.wav")
+            st.download_button("⬇️ Download WAV", f, file_name=f"generated_{current_agent.lower()}.wav")
             
         # Vis
         tab1, tab2 = st.tabs(["Waveform", "Agent Policy"])
@@ -140,7 +142,7 @@ if 'audio' in st.session_state:
             fig2, ax2 = plt.subplots()
             # Visualize the policy matrix (Brain of the agent)
             sns.heatmap(st.session_state['policy'], ax=ax2, cmap="viridis")
-            ax2.set_title("TRPO Policy Matrix (State-Action probs)")
+            ax2.set_title(f"{current_agent} Policy Matrix (State-Action probs)")
             ax2.set_xlabel("Next Note Action")
             ax2.set_ylabel("Current Note State")
             st.pyplot(fig2)

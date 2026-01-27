@@ -30,10 +30,10 @@ SWARAS = {
 RAGAS = {
     "sad": ["Sa", "Ga", "Ma", "Pa"],
     "happy": ["Sa", "Re", "Ga", "Ma", "Pa", "Ni"],
-    "calm": ["Sa", "Re", "Ma", "Pa"],
-    "neutral": ["Sa", "Re", "Ma", "Pa"],
-    "angry": ["Sa", "Ga", "Dha", "Ni"],
-    "disgusted": ["Sa", "Ga", "Dha", "Ni"],
+    "calm": ["Sa", "Re", "Ma", "Pa", "Dha"],
+    "neutral": ["Sa", "Re", "Ga", "Ma", "Pa", "Dha", "Ni"],
+    "angry": ["Sa", "Ga", "Dha", "Ni", "Re"],
+    "disgusted": ["Sa", "Ga", "Ma", "Dha"],
     "fearful": ["Sa", "Re", "Ga", "Pa"],
     "surprised": ["Sa", "Re", "Ga", "Ma", "Pa", "Ni"],
     "romantic": ["Sa", "Re", "Ga", "Pa", "Ni"]
@@ -188,12 +188,10 @@ class TRPOAgent:
         self.policy = np.ones((state_size, action_size)) / action_size
     
     def train_from_data(self, instrument_features, emotion, episodes=50):
-        target_tempo = instrument_features.get('tempo', 90)
         target_brightness = instrument_features.get('spectral_centroid_mean', 1500)
         prefer_high = target_brightness > 2000
         
-        raga_notes = RAGAS.get(emotion, RAGAS.get('neutral')) # Default to Neutral
-        
+        raga_notes = RAGAS.get(emotion, RAGAS.get('neutral'))
         notes_list = list(SWARAS.keys())
         
         for _ in range(episodes):
@@ -219,6 +217,66 @@ class TRPOAgent:
         return np.random.choice(self.action_size, p=probs)
 
 # ============================================================
+# 🤖 SAC AGENT (Soft Actor-Critic)
+# ============================================================
+class SACAgent:
+    def __init__(self, state_size, action_size, alpha=0.2, gamma=0.99, lr=0.01):
+        self.state_size = state_size
+        self.action_size = action_size
+        self.alpha = alpha  # Temperature parameter
+        self.gamma = gamma
+        self.lr = lr
+        
+        # Tabular Q-values and Policy
+        self.q_table = np.zeros((state_size, action_size))
+        self.policy = np.ones((state_size, action_size)) / action_size
+
+    def _soft_update_policy(self, state):
+        """Update policy towards Boltzmann distribution based on Q-values"""
+        exp_q = np.exp(self.q_table[state] / self.alpha)
+        sum_exp_q = np.sum(exp_q) + 1e-9
+        new_policy = exp_q / sum_exp_q
+        
+        tau = 0.1
+        self.policy[state] = (1 - tau) * self.policy[state] + tau * new_policy
+
+    def train_from_data(self, instrument_features, emotion, episodes=100):
+        target_brightness = instrument_features.get('spectral_centroid_mean', 1500)
+        prefer_high = target_brightness > 2000
+        
+        raga_notes = RAGAS.get(emotion, RAGAS.get('neutral'))
+        notes_list = list(SWARAS.keys())
+        
+        for episode in range(episodes):
+            state = np.random.randint(0, self.state_size)
+            for _ in range(10):
+                action = np.random.choice(self.action_size, p=self.policy[state])
+                note_name = notes_list[action]
+                r_harmonic = 1.0 if note_name in raga_notes else -1.0
+                
+                note_idx = action
+                r_timbre = 0
+                if prefer_high and note_idx > 3: r_timbre = 0.5
+                if not prefer_high and note_idx < 4: r_timbre = 0.5
+                
+                reward = r_harmonic + r_timbre
+                next_state = action
+                
+                next_probs = self.policy[next_state]
+                log_next_probs = np.log(next_probs + 1e-9)
+                entropy_term = -self.alpha * log_next_probs
+                value_next = np.sum(next_probs * (self.q_table[next_state] + entropy_term))
+                
+                target = reward + self.gamma * value_next
+                self.q_table[state, action] += self.lr * (target - self.q_table[state, action])
+                self._soft_update_policy(state)
+                state = next_state
+
+    def select_action(self, state_idx):
+        probs = self.policy[state_idx]
+        return np.random.choice(self.action_size, p=probs)
+
+# ============================================================
 # 🎹 GENERATION SESSION
 # ============================================================
 def synthesize_note_v2(freq, duration, instrument, sr=22050):
@@ -230,10 +288,17 @@ def synthesize_note_v2(freq, duration, instrument, sr=22050):
         audio += 1.0 * np.sin(2 * np.pi * freq * t)
         audio += 0.3 * np.sin(2 * np.pi * 2 * freq * t)
         envelope = np.minimum(t * 10, 1) * np.exp(-2 * t)
-    elif instrument in ["sitar", "veena", "guitar"]:
-        for n in range(1, 8):
-            audio += (0.6 / n) * np.sin(2 * np.pi * n * freq * t)
-        envelope = np.exp(-5 * t)
+    elif instrument in ["sitar", "veena", "guitar", "sarod"]:
+        harmonics = 10 if instrument == "sarod" else 8
+        decay = 7 if instrument == "sarod" else 5
+        for n in range(1, harmonics):
+            audio += (0.7 / n) * np.sin(2 * np.pi * n * freq * t)
+        envelope = np.exp(-decay * t)
+    elif instrument == "santoor":
+        for n in [1, 2, 3, 5, 8]:
+            audio += (0.5 / n) * np.sin(2 * np.pi * n * freq * t)
+        audio += 0.1 * np.sin(2 * np.pi * 12 * freq * t)
+        envelope = np.exp(-4 * t) * (1 + 0.05 * np.sin(2 * np.pi * 15 * t))
     elif instrument in ["tabla", "drums"]:
         f_sweep = np.linspace(freq, freq*0.8, len(t))
         audio = np.sin(2 * np.pi * f_sweep * t)
@@ -248,21 +313,27 @@ def synthesize_note_v2(freq, duration, instrument, sr=22050):
 
     return audio * envelope
 
-def generate_session(emotion, instrument, data_handler=None, duration=10):
+def generate_session(emotion, instrument, data_handler=None, duration=10, agent_type="TRPO"):
     features = {'tempo': 90}
     if data_handler:
         features = data_handler.get_instrument_features(instrument)
         print(f"📊 Features: {features}")
 
-    agent = TRPOAgent(state_size=7, action_size=7)
-    agent.train_from_data(features, emotion)
+    if agent_type == "SAC":
+        agent = SACAgent(state_size=7, action_size=7)
+        print(f"🧠 Training SAC Agent for {emotion}...")
+        agent.train_from_data(features, emotion, episodes=100)
+    else:
+        agent = TRPOAgent(state_size=7, action_size=7)
+        print(f"🧠 Training TRPO Agent for {emotion}...")
+        agent.train_from_data(features, emotion, episodes=50)
     
     target_tempo = features['tempo']
     # Adjust for emotion
-    if emotion in ['sad', 'fear']: target_tempo *= 0.8
-    if emotion in ['happy', 'surprise', 'angry']: target_tempo *= 1.2
-    if emotion in ['romantic']: target_tempo *= 0.9
-    if emotion in ['calm']: target_tempo *= 0.7
+    if emotion in ['sad', 'fear', 'disgusted']: target_tempo *= 0.8
+    elif emotion in ['happy', 'surprised', 'angry']: target_tempo *= 1.2
+    elif emotion in ['romantic']: target_tempo *= 0.9
+    elif emotion in ['calm', 'neutral']: target_tempo *= 0.75
     
     audio_full = []
     sr = 22050
