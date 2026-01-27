@@ -91,7 +91,7 @@ class DataHandler:
 # 🧠 CNN EMOTION MODEL (External Repo Integration)
 # ============================================================
 class EmotionCNN:
-    def __init__(self):
+    def __init__(self, model_path=None):
         self.model = None
         self.is_trained = False
         # External Repo uses JSON + Weights
@@ -99,8 +99,30 @@ class EmotionCNN:
         self.weights_path = "Emotion-Detection-CNN/emotion_model.h5"
         
         self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
-        self._load_from_json()
+        
+        if model_path:
+            self._load_from_path(model_path)
+        else:
+            self._load_from_json()
     
+    def _load_from_path(self, model_path):
+        """Loads model directly from a .keras or .h5 file for backward compatibility."""
+        if not KERAS_AVAILABLE: return
+        
+        if os.path.exists(model_path):
+            try:
+                print(f"📥 Loading Model via Path: {model_path}")
+                self.model = tf.keras.models.load_model(model_path)
+                self.is_trained = True
+                print("✅ Model loaded successfully from path!")
+            except Exception as e:
+                print(f"⚠️ Failed to load model from path: {e}")
+                # Fallback to JSON if possible
+                self._load_from_json()
+        else:
+            print(f"⚠️ Model path {model_path} not found. Trying default JSON/Weights.")
+            self._load_from_json()
+
     def _load_from_json(self):
         if not KERAS_AVAILABLE: return
 
