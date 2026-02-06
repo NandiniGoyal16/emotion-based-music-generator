@@ -152,4 +152,41 @@ if 'audio' in st.session_state:
             st.pyplot(fig2)
 
 
+# Agent Performance Section
+st.divider()
+st.markdown('<div class="main-header">📊 Agent Analysis & Metrics</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Comparative Performance and Learning Curves</div>', unsafe_allow_html=True)
+
+perf_tab1, perf_tab2 = st.tabs(["🚀 SAC Performance", "🏹 TRPO Performance"])
+
+with perf_tab1:
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.subheader("Performance Matrix")
+        if os.path.exists("assets/sac_performance_matrix.png"):
+            st.image("assets/sac_performance_matrix.png", use_container_width=True)
+        else:
+            st.error("SAC Performance Matrix asset missing.")
+    with col_b:
+        st.subheader("Learning Performance")
+        if os.path.exists("assets/sac_learning_graph.png"):
+            st.image("assets/sac_learning_graph.png", use_container_width=True)
+        else:
+            st.error("SAC Learning Graph asset missing.")
+
+with perf_tab2:
+    col_c, col_d = st.columns(2)
+    with col_c:
+        st.subheader("Performance Matrix")
+        if os.path.exists("assets/trpo_performance_matrix.png"):
+            st.image("assets/trpo_performance_matrix.png", use_container_width=True)
+        else:
+            st.error("TRPO Performance Matrix asset missing.")
+    with col_d:
+        st.subheader("Learning Performance")
+        if os.path.exists("assets/trpo_learning_graph.png"):
+            st.image("assets/trpo_learning_graph.png", use_container_width=True)
+        else:
+            st.error("TRPO Learning Graph asset missing.")
+
 # End of App
