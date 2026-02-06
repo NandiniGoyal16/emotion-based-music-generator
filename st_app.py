@@ -135,7 +135,11 @@ if 'audio' in st.session_state:
         with tab1:
             fig, ax = plt.subplots(figsize=(10, 4))
             ax.plot(audio[0:rate*2])
-            ax.set_title("Waveform Segment")
+            ax.set_title(
+                f"{st.session_state['meta']} – Waveform"
+            )
+            ax.set_xlabel("Time (samples)")
+            ax.set_ylabel("Amplitude")
             st.pyplot(fig)
             
         with tab2:
