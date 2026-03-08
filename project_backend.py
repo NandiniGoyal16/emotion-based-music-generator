@@ -22,7 +22,7 @@ EMOTIONS = ["angry", "disgusted", "fearful", "happy", "neutral", "sad", "surpris
 
 # Instruments
 INSTRUMENTS = ["sarod", "santoor", "tabla", "harmonium", "veena", "flute", "sitar"]
-WESTERN_INSTRUMENTS = ["acoustic_guitar", "banjo", "bass_guitar", "drum_set", "piano", "violin"]
+WESTERN_INSTRUMENTS = ["acoustic_guitar", "banjo", "bass_guitar", "drum_set", "piano", "violin", "electro_guitar"]
 
 # Indian Classical (Swaras & Ragas)
 SWARAS = {
@@ -396,7 +396,7 @@ def synthesize_note_v2(freq, duration, instrument, sr=22050):
         audio += 1.0 * np.sin(2 * np.pi * freq * t)
         audio += 0.3 * np.sin(2 * np.pi * 2 * freq * t)
         envelope = np.minimum(t * 10, 1) * np.exp(-2 * t)
-    elif instrument in ["sitar", "veena", "guitar", "sarod", "acoustic_guitar", "banjo", "bass_guitar"]:
+    elif instrument in ["sitar", "veena", "guitar", "sarod", "acoustic_guitar", "banjo", "bass_guitar", "electro_guitar"]:
         # PLUCKED STRINGS
         if instrument == "sarod": 
             harmonics, decay = 10, 7
@@ -404,11 +404,18 @@ def synthesize_note_v2(freq, duration, instrument, sr=22050):
             harmonics, decay = 12, 10 # Sharper pluck
         elif instrument == "bass_guitar":
             harmonics, decay = 4, 3 # Thumpy, low harmonics
+        elif instrument == "electro_guitar":
+            harmonics, decay = 15, 2 # Sustained, lots of harmonics
         else: # Sitar, Guitar, Acoustic
             harmonics, decay = 8, 5
             
         for n in range(1, harmonics + 1):
             audio += (0.7 / n) * np.sin(2 * np.pi * n * freq * t)
+        
+        # Add some 'distortion' for electro guitar
+        if instrument == "electro_guitar":
+            audio = np.tanh(audio * 2) # Soft clipping
+            
         envelope = np.exp(-decay * t)
     elif instrument == "santoor":
         for n in [1, 2, 3, 5, 8]:
