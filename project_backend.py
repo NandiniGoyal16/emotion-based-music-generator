@@ -22,7 +22,9 @@ EMOTIONS = ["angry", "disgusted", "fearful", "happy", "neutral", "sad", "surpris
 
 # Instruments
 INSTRUMENTS = ["sarod", "santoor", "tabla", "harmonium", "veena", "flute", "sitar"]
+WESTERN_INSTRUMENTS = ["acoustic_guitar", "banjo", "bass_guitar", "drum_set", "piano", "violin"]
 
+# Indian Classical (Swaras & Ragas)
 SWARAS = {
     "Sa": 240, "Re": 270, "Ga": 300,
     "Ma": 320, "Pa": 360, "Dha": 400, "Ni": 450
@@ -38,6 +40,25 @@ RAGAS = {
     "fearful": ["Sa", "Re", "Ga", "Pa"],
     "surprised": ["Sa", "Re", "Ga", "Ma", "Pa", "Ni"],
     "romantic": ["Sa", "Re", "Ga", "Pa", "Ni"]
+}
+
+# Western Notes & Scales
+# Approximation: C4 to B4
+WESTERN_NOTES = {
+    "C": 261.63, "D": 293.66, "E": 329.63, 
+    "F": 349.23, "G": 392.00, "A": 440.00, "B": 493.88
+}
+
+SCALES = {
+    "happy": ["C", "D", "E", "F", "G", "A", "B"], # Major
+    "sad": ["C", "D", "F", "G"], # Minor-ish
+    "calm": ["C", "E", "F", "G", "B"],
+    "neutral": ["C", "D", "E", "F", "G", "A", "B"],
+    "angry": ["C", "D", "F", "G", "A"],
+    "disgusted": ["C", "D", "F", "G"],
+    "fearful": ["C", "D", "F", "G"],
+    "surprised": ["C", "D", "E", "F", "G", "A", "B"],
+    "romantic": ["C", "E", "G", "A", "B"]
 }
 
 # ============================================================
@@ -235,6 +256,34 @@ class TRPOAgent:
                 if np.sum(self.policy[s]) > 0:
                     self.policy[s] /= np.sum(self.policy[s])
 
+    def train_v2(self, instrument_features, emotion, music_type="Indian Classical", episodes=50):
+        target_brightness = instrument_features.get('spectral_centroid_mean', 1500)
+        prefer_high = target_brightness > 2000
+        
+        if music_type == "Western":
+            target_notes = SCALES.get(emotion, SCALES.get('neutral'))
+            notes_list = list(WESTERN_NOTES.keys())
+        else:
+            target_notes = RAGAS.get(emotion, RAGAS.get('neutral'))
+            notes_list = list(SWARAS.keys())
+        
+        for _ in range(episodes):
+            for s in range(self.state_size):
+                for a in range(self.action_size):
+                    note_name = notes_list[a]
+                    r_harmonic = 1.0 if note_name in target_notes else -1.0
+                    
+                    note_idx = a
+                    r_timbre = 0
+                    if prefer_high and note_idx > 3: r_timbre = 0.5
+                    if not prefer_high and note_idx < 4: r_timbre = 0.5
+                    
+                    reward = r_harmonic + r_timbre
+                    self.policy[s, a] += 0.01 * reward
+                
+                self.policy[s] = np.maximum(self.policy[s], 1e-9)
+                self.policy[s] /= np.sum(self.policy[s])
+
     def select_action(self, state_idx):
         probs = self.policy[state_idx]
         return np.random.choice(self.action_size, p=probs)
@@ -295,6 +344,42 @@ class SACAgent:
                 self._soft_update_policy(state)
                 state = next_state
 
+    def train_v2(self, instrument_features, emotion, music_type="Indian Classical", episodes=100):
+        target_brightness = instrument_features.get('spectral_centroid_mean', 1500)
+        prefer_high = target_brightness > 2000
+        
+        if music_type == "Western":
+            target_notes = SCALES.get(emotion, SCALES.get('neutral'))
+            notes_list = list(WESTERN_NOTES.keys())
+        else:
+            target_notes = RAGAS.get(emotion, RAGAS.get('neutral'))
+            notes_list = list(SWARAS.keys())
+        
+        for episode in range(episodes):
+            state = np.random.randint(0, self.state_size)
+            for _ in range(10):
+                action = np.random.choice(self.action_size, p=self.policy[state])
+                note_name = notes_list[action]
+                r_harmonic = 1.0 if note_name in target_notes else -1.0
+                
+                note_idx = action
+                r_timbre = 0
+                if prefer_high and note_idx > 3: r_timbre = 0.5
+                if not prefer_high and note_idx < 4: r_timbre = 0.5
+                
+                reward = r_harmonic + r_timbre
+                next_state = action
+                
+                next_probs = self.policy[next_state]
+                log_next_probs = np.log(next_probs + 1e-9)
+                entropy_term = -self.alpha * log_next_probs
+                value_next = np.sum(next_probs * (self.q_table[next_state] + entropy_term))
+                
+                target = reward + self.gamma * value_next
+                self.q_table[state, action] += self.lr * (target - self.q_table[state, action])
+                self._soft_update_policy(state)
+                state = next_state
+
     def select_action(self, state_idx):
         probs = self.policy[state_idx]
         return np.random.choice(self.action_size, p=probs)
@@ -311,10 +396,18 @@ def synthesize_note_v2(freq, duration, instrument, sr=22050):
         audio += 1.0 * np.sin(2 * np.pi * freq * t)
         audio += 0.3 * np.sin(2 * np.pi * 2 * freq * t)
         envelope = np.minimum(t * 10, 1) * np.exp(-2 * t)
-    elif instrument in ["sitar", "veena", "guitar", "sarod"]:
-        harmonics = 10 if instrument == "sarod" else 8
-        decay = 7 if instrument == "sarod" else 5
-        for n in range(1, harmonics):
+    elif instrument in ["sitar", "veena", "guitar", "sarod", "acoustic_guitar", "banjo", "bass_guitar"]:
+        # PLUCKED STRINGS
+        if instrument == "sarod": 
+            harmonics, decay = 10, 7
+        elif instrument == "banjo":
+            harmonics, decay = 12, 10 # Sharper pluck
+        elif instrument == "bass_guitar":
+            harmonics, decay = 4, 3 # Thumpy, low harmonics
+        else: # Sitar, Guitar, Acoustic
+            harmonics, decay = 8, 5
+            
+        for n in range(1, harmonics + 1):
             audio += (0.7 / n) * np.sin(2 * np.pi * n * freq * t)
         envelope = np.exp(-decay * t)
     elif instrument == "santoor":
@@ -322,21 +415,27 @@ def synthesize_note_v2(freq, duration, instrument, sr=22050):
             audio += (0.5 / n) * np.sin(2 * np.pi * n * freq * t)
         audio += 0.1 * np.sin(2 * np.pi * 12 * freq * t)
         envelope = np.exp(-4 * t) * (1 + 0.05 * np.sin(2 * np.pi * 15 * t))
-    elif instrument in ["tabla", "drums"]:
+    elif instrument in ["tabla", "drums", "drum_set"]:
         f_sweep = np.linspace(freq, freq*0.8, len(t))
         audio = np.sin(2 * np.pi * f_sweep * t)
-        envelope = np.exp(-8 * t)
-    elif instrument == "harmonium":
-        for n in range(1, 8):
-            if n%2!=0: audio += (0.5/n) * np.sin(2 * np.pi * n * freq * t)
-        envelope = np.ones_like(t) * 0.9
+        envelope = np.exp(-12 * t) if instrument == "drum_set" else np.exp(-8 * t)
+    elif instrument == "harmonium" or instrument == "piano":
+        harmonics = 8 if instrument == "piano" else 7
+        for n in range(1, harmonics):
+            if n%2!=0 or instrument == "piano": 
+                audio += (0.5/n) * np.sin(2 * np.pi * n * freq * t)
+        envelope = np.exp(-3 * t) if instrument == "piano" else np.ones_like(t) * 0.9
+    elif instrument == "violin":
+        for n in range(1, 10):
+            audio += (0.5 / n) * np.sin(2 * np.pi * n * freq * t)
+        envelope = np.minimum(t * 10, 1) * np.exp(-1.5 * t)
     else:
         audio = np.sin(2 * np.pi * freq * t)
         envelope = np.exp(-3 * t)
 
     return audio * envelope
 
-def generate_session(emotion, instrument, data_handler=None, duration=10, agent_type="TRPO"):
+def generate_session(emotion, instrument, data_handler=None, duration=10, agent_type="TRPO", music_type="Indian Classical"):
     features = {'tempo': 90}
     if data_handler:
         features = data_handler.get_instrument_features(instrument)
@@ -344,12 +443,12 @@ def generate_session(emotion, instrument, data_handler=None, duration=10, agent_
 
     if agent_type == "SAC":
         agent = SACAgent(state_size=7, action_size=7)
-        print(f"🧠 Training SAC Agent for {emotion}...")
-        agent.train_from_data(features, emotion, episodes=100)
+        print(f"🧠 Training SAC Agent for {emotion} ({music_type})...")
+        agent.train_v2(features, emotion, music_type=music_type, episodes=100)
     else:
         agent = TRPOAgent(state_size=7, action_size=7)
-        print(f"🧠 Training TRPO Agent for {emotion}...")
-        agent.train_from_data(features, emotion, episodes=50)
+        print(f"🧠 Training TRPO Agent for {emotion} ({music_type})...")
+        agent.train_v2(features, emotion, music_type=music_type, episodes=50)
     
     target_tempo = features['tempo']
     # Adjust for emotion
@@ -362,14 +461,20 @@ def generate_session(emotion, instrument, data_handler=None, duration=10, agent_
     sr = 22050
     beat_step = 60.0 / target_tempo
     
-    notes_list = list(SWARAS.keys())
+    if music_type == "Western":
+        notes_list = list(WESTERN_NOTES.keys())
+        freq_map = WESTERN_NOTES
+    else:
+        notes_list = list(SWARAS.keys())
+        freq_map = SWARAS
+
     current_idx = 0
     total_time = 0
     
     while total_time < duration:
         next_idx = agent.select_action(current_idx)
         note_name = notes_list[next_idx]
-        freq = SWARAS[note_name]
+        freq = freq_map[note_name]
         
         dur = beat_step * random.choice([0.5, 1.0, 2.0])
         wave = synthesize_note_v2(freq, dur, instrument, sr)

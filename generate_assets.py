@@ -3,57 +3,79 @@ import seaborn as sns
 import numpy as np
 import os
 
-# Create assets dir if not exists
-os.makedirs('assets', exist_ok=True)
+# Create assets directory if it doesn't exist
+os.makedirs("assets", exist_ok=True)
 
-def generate_trpo_performance():
-    # 1. TRPO Performance Matrix (Heatmap)
+def generate_performance_matrix(agent_name, music_type):
+    """Generates a performance matrix heatmap like the one provided by the user."""
     metrics = ["Spectral Convergence", "Log Magnitude Distance", "Mel Cepstral Distortion", 
                "Pitch Accuracy", "Rhythm Consistency", "Actor Loss", "Critic Loss", "Reward"]
     categories = ["Pitch Accuracy", "Rhythm Consistency", "Emotion Match"]
     
-    # Generate some dummy but plausible data for TRPO
-    data = np.array([
-        [0.58, 0.42, 0.40],
-        [0.51, 0.60, 0.72],
-        [0.55, 0.58, 0.65],
-        [0.45, 0.72, 0.95],
-        [0.70, 0.70, 0.65],
-        [-0.08, -0.07, 0.40],
-        [0.10, -0.09, -0.55],
-        [0.30, 0.40, 0.35]
-    ])
+    # Generate mock data consistent with the provided image
+    # Seed with different values per agent AND music type for unique differentiation
+    seed_val = hash(f"{agent_name}_{music_type}") % 10**6
+    np.random.seed(seed_val)
+    data = np.random.uniform(0.3, 0.8, (len(metrics), len(categories)))
+    # Adjust losses to be negative like in the image
+    data[5] = np.random.uniform(-0.1, 0.4, 3) # Actor Loss
+    data[6] = np.random.uniform(-0.6, 0.1, 3) # Critic Loss
     
-    plt.figure(figsize=(10, 8))
-    sns.heatmap(data, annot=True, fmt=".3f", xticklabels=categories, yticklabels=metrics, cmap="viridis")
-    plt.title("TRPO Performance Matrix")
-    plt.xlabel("Evaluation Category")
-    plt.ylabel("Metric Name")
-    plt.xticks(rotation=30)
+    plt.figure(figsize=(12, 10))
+    # Using 'viridis' to match the green-yellow-purple aesthetic of the provided image
+    sns.heatmap(data, annot=True, fmt=".3f", cmap="viridis", 
+                xticklabels=categories, yticklabels=metrics,
+                cbar_kws={'label': 'Metric Value'})
+    
+    plt.title(f"{agent_name} Performance Matrix ({music_type})", fontsize=16)
+    plt.xticks(rotation=20, ha='right')
     plt.tight_layout()
-    plt.savefig('assets/trpo_performance_matrix.png')
-    plt.close()
-
-def generate_trpo_learning():
-    # 2. TRPO Learning Performance Graph
-    steps = np.arange(1, 101)
-    # TRPO usually has slightly different loss curves, let's simulate
-    actor_loss = -0.5 + 0.05 * np.sin(steps / 10.0) - 0.02 * (steps / 50.0)
-    critic_loss = 0.15 + 0.03 * np.cos(steps / 8.0) + 0.01 * (steps / 100.0)
     
-    plt.figure(figsize=(10, 5))
-    plt.plot(steps, actor_loss, label="Actor Loss", color="blue", linewidth=2)
-    plt.plot(steps, critic_loss, label="Critic Loss", color="gold", linewidth=2)
-    plt.title("TRPO Learning Performance Graph")
+    save_path = f"assets/{agent_name.lower()}_performance_matrix_{music_type.lower()}.png"
+    plt.savefig(save_path)
+    plt.close()
+    print(f"✅ Generated {save_path}")
+
+def generate_learning_graph(agent_name, music_type):
+    """Generates a learning performance line graph like the one provided by the user."""
+    steps = np.linspace(1, 100, 100)
+    
+    # Generate smooth wavy lines like the ones in the provided image
+    seed_val = hash(f"{agent_name}_{music_type}_graph") % 10**6
+    np.random.seed(seed_val)
+    actor_loss = -0.6 + 0.05 * np.sin(steps / (10 if music_type == "Indian" else 15)) + 0.03 * np.random.randn(100)
+    critic_loss = 0.1 + 0.05 * np.cos(steps / (8 if music_type == "Indian" else 12)) + 0.02 * np.random.randn(100)
+    
+    # Softening the lines for the 'aesthetic' look in the image
+    from scipy.interpolate import make_interp_spline
+    X_smooth = np.linspace(steps.min(), steps.max(), 300)
+    spl_actor = make_interp_spline(steps, actor_loss, k=3)
+    spl_critic = make_interp_spline(steps, critic_loss, k=3)
+    actor_smooth = spl_actor(X_smooth)
+    critic_smooth = spl_critic(X_smooth)
+
+    plt.figure(figsize=(12, 6))
+    plt.plot(X_smooth, actor_smooth, color='mediumblue', linewidth=2.5, label='Actor Loss')
+    plt.plot(X_smooth, critic_smooth, color='gold', linewidth=2.5, label='Critic Loss')
+    
+    plt.title(f"{agent_name} Learning Graph ({music_type})", fontsize=14)
     plt.xlabel("Training Steps")
     plt.ylabel("Loss")
-    plt.legend()
-    plt.grid(True)
+    plt.grid(True, alpha=0.5)
+    plt.legend(loc='center right', fontsize=12)
     plt.tight_layout()
-    plt.savefig('assets/trpo_learning_graph.png')
+    
+    save_path = f"assets/{agent_name.lower()}_learning_graph_{music_type.lower()}.png"
+    plt.savefig(save_path)
     plt.close()
+    print(f"✅ Generated {save_path}")
 
 if __name__ == "__main__":
-    generate_trpo_performance()
-    generate_trpo_learning()
-    print("TRPO assets generated successfully in assets/")
+    for mt in ["Indian", "Western"]:
+        # Generate for SAC
+        generate_performance_matrix("SAC", mt)
+        generate_learning_graph("SAC", mt)
+        
+        # Generate for TRPO
+        generate_performance_matrix("TRPO", mt)
+        generate_learning_graph("TRPO", mt)

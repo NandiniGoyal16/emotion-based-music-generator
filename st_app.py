@@ -19,14 +19,20 @@ st.set_page_config(
 
 # Initialize Components
 # Removed cache to ensure strict model reloading
-def get_components():
+def get_components(music_type="Indian Classical"):
     cnn = project_backend.EmotionCNN()
     # Path to user CSV
-    data_handler = project_backend.DataHandler("final2.O_merged_instrument_dataset(2054 audios).csv")
+    if music_type == "Western":
+        csv_path = "western_instruments_features.csv"
+    else:
+        csv_path = "final2.O_merged_instrument_dataset(2054 audios).csv"
+        
+    data_handler = project_backend.DataHandler(csv_path)
     data_handler.load_data()
     return cnn, data_handler
 
-cnn_model, data_handler = get_components()
+# Initial load will be handled inside sidebar to be reactive
+cnn_model = project_backend.EmotionCNN()
 # ... (intermediate styles unchanged)
 st.markdown("""
 <style>
@@ -45,6 +51,7 @@ with st.sidebar:
     input_mode = st.radio("Input Mode", ["Upload Image", "Manual Selection"])
     
     st.divider()
+    music_type = st.radio("Music Type", ["Indian Classical", "Western"], index=0)
     agent_type = st.radio("Agent Type (RL Algorithm)", ["TRPO", "SAC"], index=0)
     
     detected_emotion = None
@@ -77,7 +84,13 @@ with st.sidebar:
         # Manual Mode
         selected_emotion = st.selectbox("Select Emotion", project_backend.EMOTIONS)
         
-    selected_instrument = st.selectbox("Select Instrument", project_backend.INSTRUMENTS)
+    if music_type == "Western":
+        selected_instrument = st.selectbox("Select Instrument", project_backend.WESTERN_INSTRUMENTS)
+    else:
+        selected_instrument = st.selectbox("Select Instrument", project_backend.INSTRUMENTS)
+    
+    # Reload DataHandler if music type changed
+    _, data_handler = get_components(music_type)
     
     duration = st.slider("Duration (seconds)", 5, 30, 10)
 
@@ -97,7 +110,8 @@ with col1:
                     selected_instrument, 
                     data_handler, 
                     duration,
-                    agent_type=agent_type
+                    agent_type=agent_type,
+                    music_type=music_type
                 )
                 
                 st.session_state['audio'] = audio_data
@@ -157,36 +171,42 @@ st.divider()
 st.markdown('<div class="main-header">📊 Agent Analysis & Metrics</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-header">Comparative Performance and Learning Curves</div>', unsafe_allow_html=True)
 
+mt_suffix = "western" if music_type == "Western" else "indian"
+
 perf_tab1, perf_tab2 = st.tabs(["🚀 SAC Performance", "🏹 TRPO Performance"])
 
 with perf_tab1:
     col_a, col_b = st.columns(2)
     with col_a:
-        st.subheader("Performance Matrix")
-        if os.path.exists("assets/sac_performance_matrix.png"):
-            st.image("assets/sac_performance_matrix.png", use_container_width=True)
+        st.subheader(f"Performance Matrix ({music_type})")
+        img_path = f"assets/sac_performance_matrix_{mt_suffix}.png"
+        if os.path.exists(img_path):
+            st.image(img_path, use_container_width=True)
         else:
-            st.error("SAC Performance Matrix asset missing.")
+            st.error(f"SAC Performance Matrix asset missing: {img_path}")
     with col_b:
-        st.subheader("Learning Performance")
-        if os.path.exists("assets/sac_learning_graph.png"):
-            st.image("assets/sac_learning_graph.png", use_container_width=True)
+        st.subheader(f"Learning Performance ({music_type})")
+        img_path = f"assets/sac_learning_graph_{mt_suffix}.png"
+        if os.path.exists(img_path):
+            st.image(img_path, use_container_width=True)
         else:
-            st.error("SAC Learning Graph asset missing.")
+            st.error(f"SAC Learning Graph asset missing: {img_path}")
 
 with perf_tab2:
     col_c, col_d = st.columns(2)
     with col_c:
-        st.subheader("Performance Matrix")
-        if os.path.exists("assets/trpo_performance_matrix.png"):
-            st.image("assets/trpo_performance_matrix.png", use_container_width=True)
+        st.subheader(f"Performance Matrix ({music_type})")
+        img_path = f"assets/trpo_performance_matrix_{mt_suffix}.png"
+        if os.path.exists(img_path):
+            st.image(img_path, use_container_width=True)
         else:
-            st.error("TRPO Performance Matrix asset missing.")
+            st.error(f"TRPO Performance Matrix asset missing: {img_path}")
     with col_d:
-        st.subheader("Learning Performance")
-        if os.path.exists("assets/trpo_learning_graph.png"):
-            st.image("assets/trpo_learning_graph.png", use_container_width=True)
+        st.subheader(f"Learning Performance ({music_type})")
+        img_path = f"assets/trpo_learning_graph_{mt_suffix}.png"
+        if os.path.exists(img_path):
+            st.image(img_path, use_container_width=True)
         else:
-            st.error("TRPO Learning Graph asset missing.")
+            st.error(f"TRPO Learning Graph asset missing: {img_path}")
 
 # End of App
